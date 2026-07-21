@@ -22,12 +22,12 @@ intensity_threshold = st.sidebar.slider("Intensity Threshold", min_value=0, max_
 
 # Helper for video frame extraction
 @st.cache_resource
-def save_uploaded_video(uploaded_file):
+def save_uploaded_video(file_id, _uploaded_file):
     import tempfile
     import shutil
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-        uploaded_file.seek(0)
-        shutil.copyfileobj(uploaded_file, tmp)
+        _uploaded_file.seek(0)
+        shutil.copyfileobj(_uploaded_file, tmp)
         return tmp.name
 
 @st.cache_data
@@ -145,7 +145,7 @@ st.title("CT Fiber Orientation Analyzer")
 if uploaded_file is not None:
     filename = uploaded_file.name
     if filename.endswith(("mp4", "avi")):
-        video_path = save_uploaded_video(uploaded_file)
+        video_path = save_uploaded_video(uploaded_file.file_id, uploaded_file)
         frame_count = get_video_frame_count(video_path)
         if frame_count > 0:
             frame_idx = st.sidebar.slider("Select Frame", 0, frame_count - 1, 0)
