@@ -21,25 +21,30 @@ blur_kernel_size = st.sidebar.slider("Gaussian Blur Kernel Size", min_value=3, m
 intensity_threshold = st.sidebar.slider("Intensity Threshold", min_value=0, max_value=255, value=50)
 
 # Helper for video frame extraction
-@st.cache_data
-def get_video_frames(video_bytes):
-    # write to temp file
+@st.cache_resource
+def save_uploaded_video(uploaded_file):
     import tempfile
+    import shutil
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-        tmp.write(video_bytes)
-        tmp_path = tmp.name
-    
-    cap = cv2.VideoCapture(tmp_path)
-    frames = []
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        # Convert BGR to RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frames.append(frame)
+        uploaded_file.seek(0)
+        shutil.copyfileobj(uploaded_file, tmp)
+        return tmp.name
+
+@st.cache_data
+def get_video_frame_count(video_path):
+    cap = cv2.VideoCapture(video_path)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
-    return frames
+    return frame_count
+
+def get_single_frame(video_path, frame_idx):
+    cap = cv2.VideoCapture(video_path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    ret, frame = cap.read()
+    cap.release()
+    if ret:
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    return None
 
 @st.cache_data
 def analyze_fiber_orientation(image, grid_size, threshold, blur_ksize):
@@ -140,10 +145,14 @@ st.title("CT Fiber Orientation Analyzer")
 if uploaded_file is not None:
     filename = uploaded_file.name
     if filename.endswith(("mp4", "avi")):
-        frames = get_video_frames(uploaded_file.read())
-        if len(frames) > 0:
-            frame_idx = st.sidebar.slider("Select Frame", 0, len(frames)-1, 0)
-            current_frame = frames[frame_idx]
+        video_path = save_uploaded_video(uploaded_file)
+        frame_count = get_video_frame_count(video_path)
+        if frame_count > 0:
+            frame_idx = st.sidebar.slider("Select Frame", 0, frame_count - 1, 0)
+            current_frame = get_single_frame(video_path, frame_idx)
+            if current_frame is None:
+                st.error("Failed to read the selected frame.")
+                st.stop()
         else:
             st.error("Failed to extract frames from video.")
             st.stop()
