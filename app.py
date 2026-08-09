@@ -11,7 +11,7 @@ st.set_page_config(page_title="CT Fiber Orientation Analyzer", page_icon=":mater
 
 st.title(":material/center_focus_strong: CT Fiber Orientation Analyzer")
 
-st.markdown("""
+st.markdown(r"""
 Analyze short-glass-fiber orientation from **CT scan screenshots & image slices**. 
 Computes local structure tensor matrices ($J_{xx}, J_{yy}, J_{xy}$), generates directional vector overlays, calculates circular angular statistics, and compares orientation angles against nominal flow directions ($0^\circ, 45^\circ, 90^\circ$).
 """)
@@ -228,7 +228,7 @@ if images_dict:
                 st.image(selected_res['image'], width="stretch")
         with c_img2:
             with st.container(border=True):
-                st.markdown("**Fiber Vector Overlay** (Green: $\\le 5^\circ$, Amber: $\\le 15^\circ$, Red: $>15^\circ$)")
+                st.markdown(r"**Fiber Vector Overlay** (Green: $\le 5^\circ$, Amber: $\le 15^\circ$, Red: $>15^\circ$)")
                 st.image(selected_res['overlay'], width="stretch")
 
     # ---------------------------------------------------------
