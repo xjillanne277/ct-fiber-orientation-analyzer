@@ -80,37 +80,42 @@ def detect_sample_boundaries(img_gray):
     from scipy.ndimage import gaussian_filter1d
     h, w = img_gray.shape
     
-    # 1. Detect Left & Right Solid Non-Sample Trims (X-direction)
-    mid_band = img_gray[int(0.25 * h):int(0.75 * h), :]
-    col_stds = np.std(mid_band, axis=0)
-    col_means = np.mean(mid_band, axis=0)
+    # Smooth vertical profile to get approximate core location
+    row_means_all = np.mean(img_gray, axis=1)
+    smooth_all = gaussian_filter1d(row_means_all, sigma=2.0)
+    c_min = int(0.30 * h)
+    c_max = int(0.70 * h)
+    core_peak = c_min + int(np.argmax(smooth_all[c_min:c_max]))
     
+    # 1. Detect Left & Right Sample Boundaries (X-direction)
+    # Analyze the central vertical region where the specimen is guaranteed to exist
+    sample_y_band = img_gray[max(0, core_peak - 100):min(h, core_peak + 100), :]
+    col_means = np.mean(sample_y_band, axis=0)
+    
+    # Search from x=0 to w//2: specimen begins where column mean is consistently > 62 for 15+ cols
     x_part_left = 0
-    for x in range(min(w // 3, 250)):
-        if col_stds[x] > 8.0 and col_means[x] > 15.0:
+    for x in range(w // 2):
+        if x + 15 < w and np.all(col_means[x:x+15] > 62.0):
             x_part_left = x
             break
             
+    # Search from x=w-1 down to w//2: specimen ends where column mean drops
     x_part_right = w - 1
-    for x in range(w - 1, max(w - w // 3, w - 250), -1):
-        if col_stds[x] > 8.0 and col_means[x] > 15.0:
+    for x in range(w - 1, w // 2, -1):
+        if x - 15 >= 0 and np.all(col_means[x-15:x] > 62.0):
             x_part_right = x
             break
             
+    # 2. Slice strictly within the physical sample width [x_part_left:x_part_right + 1]
     sample_x_img = img_gray[:, x_part_left:x_part_right + 1]
     row_means = np.mean(sample_x_img, axis=1)
-    
-    # Smooth vertical profile
     smooth_means = gaussian_filter1d(row_means, sigma=2.0)
     d_means = np.gradient(smooth_means)
     
-    # 2. Locate Core Peak in the center 40% of the image
-    c_min = int(0.30 * h)
-    c_max = int(0.70 * h)
+    # 3. Locate Core Peak in the center region
     core_peak = c_min + int(np.argmax(smooth_means[c_min:c_max]))
     core_val = smooth_means[core_peak]
     
-    # Baseline intensity for skin around +/- 100px from core
     skin_top_sample = smooth_means[max(0, core_peak - 100)]
     skin_bot_sample = smooth_means[min(h - 1, core_peak + 100)]
     skin_baseline = (skin_top_sample + skin_bot_sample) / 2.0
@@ -128,14 +133,14 @@ def detect_sample_boundaries(img_gray):
         y_core_top = max(0, core_peak - 8)
         y_core_bot = min(h - 1, core_peak + 8)
         
-    # 3. Detect Top Surface (moving upward from core until sharp transition into dark background)
+    # 4. Detect Top Surface (moving upward from core until sharp transition into dark background)
     y_part_top = 0
     for y in range(core_peak - 25, 0, -1):
         if (d_means[y] > 1.5 and smooth_means[y] < 72.0) or (smooth_means[y] < 63.0):
             y_part_top = y
             break
             
-    # 4. Detect Bottom Surface (moving downward from core until sharp transition into dark background)
+    # 5. Detect Bottom Surface (moving downward from core until sharp transition into dark background)
     y_part_bot = h - 1
     for y in range(core_peak + 25, h - 1):
         if (d_means[y] < -1.5 and smooth_means[y] < 72.0) or (smooth_means[y] < 63.0):
