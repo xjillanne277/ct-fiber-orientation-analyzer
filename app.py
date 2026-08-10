@@ -77,6 +77,7 @@ with st.sidebar:
 # CORE IMAGE ANALYSIS PIPELINE (With 4-Way Trimming)
 # ---------------------------------------------------------
 def detect_sample_boundaries(img_gray):
+    from scipy.ndimage import gaussian_filter1d
     h, w = img_gray.shape
     
     # 1. Detect Left & Right Solid Non-Sample Trims (X-direction)
@@ -96,62 +97,51 @@ def detect_sample_boundaries(img_gray):
             x_part_right = x
             break
             
-    # Sample width in X
-    x_sample_w = max(x_part_right - x_part_left + 1, 10)
     sample_x_img = img_gray[:, x_part_left:x_part_right + 1]
-    
-    # 2. Detect Top & Bottom Sample Surfaces (Y-direction)
     row_means = np.mean(sample_x_img, axis=1)
-    row_stds = np.std(sample_x_img, axis=1)
     
-    mid_y = h // 2
+    # Smooth vertical profile
+    smooth_means = gaussian_filter1d(row_means, sigma=2.0)
+    d_means = np.gradient(smooth_means)
     
+    # 2. Locate Core Peak in the center 40% of the image
+    c_min = int(0.30 * h)
+    c_max = int(0.70 * h)
+    core_peak = c_min + int(np.argmax(smooth_means[c_min:c_max]))
+    core_val = smooth_means[core_peak]
+    
+    # Baseline intensity for skin around +/- 100px from core
+    skin_top_sample = smooth_means[max(0, core_peak - 100)]
+    skin_bot_sample = smooth_means[min(h - 1, core_peak + 100)]
+    skin_baseline = (skin_top_sample + skin_bot_sample) / 2.0
+    
+    # Core thickness: thin lighter region centered at core_peak
+    core_thresh = skin_baseline + 0.35 * (core_val - skin_baseline)
+    y_core_top = core_peak
+    while y_core_top > 10 and smooth_means[y_core_top] > core_thresh:
+        y_core_top -= 1
+    y_core_bot = core_peak
+    while y_core_bot < h - 10 and smooth_means[y_core_bot] > core_thresh:
+        y_core_bot += 1
+        
+    if y_core_bot - y_core_top < 8:
+        y_core_top = max(0, core_peak - 8)
+        y_core_bot = min(h - 1, core_peak + 8)
+        
+    # 3. Detect Top Surface (moving upward from core until sharp transition into dark background)
     y_part_top = 0
-    for y in range(mid_y, 0, -1):
-        if row_stds[y] < 9.0 or row_means[y] < 62.0:
-            y_part_top = y + 1
+    for y in range(core_peak - 25, 0, -1):
+        if (d_means[y] > 1.5 and smooth_means[y] < 72.0) or (smooth_means[y] < 63.0):
+            y_part_top = y
             break
             
+    # 4. Detect Bottom Surface (moving downward from core until sharp transition into dark background)
     y_part_bot = h - 1
-    for y in range(mid_y, h):
-        if row_stds[y] < 8.5 or row_means[y] < 58.0:
-            y_part_bot = y - 1
+    for y in range(core_peak + 25, h - 1):
+        if (d_means[y] < -1.5 and smooth_means[y] < 72.0) or (smooth_means[y] < 63.0):
+            y_part_bot = y
             break
             
-    part_h = max(y_part_bot - y_part_top + 1, 10)
-    center_part = (y_part_top + y_part_bot) // 2
-    
-    # 3. Detect Thin Lighter Core Centered in Sample
-    search_radius = max(int(0.20 * part_h), 10)
-    s_min = max(0, center_part - search_radius)
-    s_max = min(h, center_part + search_radius)
-    
-    core_search = row_means[s_min:s_max]
-    if len(core_search) > 0:
-        core_peak_y = s_min + int(np.argmax(core_search))
-        peak_val = row_means[core_peak_y]
-        
-        skin_val_top = row_means[max(y_part_top, core_peak_y - search_radius)]
-        skin_val_bot = row_means[min(y_part_bot, core_peak_y + search_radius)]
-        baseline_skin = (skin_val_top + skin_val_bot) / 2.0
-        
-        core_thresh = baseline_skin + 0.35 * (peak_val - baseline_skin)
-        
-        y_core_top = core_peak_y
-        while y_core_top > y_part_top and row_means[y_core_top] > core_thresh:
-            y_core_top -= 1
-            
-        y_core_bot = core_peak_y
-        while y_core_bot < y_part_bot and row_means[y_core_bot] > core_thresh:
-            y_core_bot += 1
-            
-        if y_core_bot - y_core_top < 6:
-            y_core_top = max(y_part_top + 1, core_peak_y - 6)
-            y_core_bot = min(y_part_bot - 1, core_peak_y + 6)
-    else:
-        y_core_top = center_part - 5
-        y_core_bot = center_part + 5
-        
     y_part_top = max(0, min(y_part_top, h - 4))
     y_core_top = max(y_part_top + 1, min(y_core_top, h - 3))
     y_core_bot = max(y_core_top + 1, min(y_core_bot, h - 2))
