@@ -454,19 +454,19 @@ if selected_image_gray is not None:
     with st.expander(":material/tune: Fine-Tune Boundaries (Optional)", expanded=False):
         t_c1, t_c2 = st.columns(2)
         with t_c1:
-            sel_xl = st.number_input("Left Trim (x px)", min_value=0, max_value=w//2, value=auto_xl, step=2)
+            sel_xl = st.number_input("Left Trim (x px)", min_value=0, max_value=w//2, value=auto_xl, step=2, key=f"xl_{source_title}")
         with t_c2:
-            sel_xr = st.number_input("Right Trim (x px)", min_value=w//2, max_value=w-1, value=auto_xr, step=2)
+            sel_xr = st.number_input("Right Trim (x px)", min_value=w//2, max_value=w-1, value=auto_xr, step=2, key=f"xr_{source_title}")
             
         b_c1, b_c2, b_c3, b_c4 = st.columns(4)
         with b_c1:
-            sel_pt = st.number_input("Top Surface (y px)", min_value=0, max_value=h-4, value=auto_pt, step=2)
+            sel_pt = st.number_input("Top Surface (y px)", min_value=0, max_value=h-4, value=auto_pt, step=2, key=f"pt_{source_title}")
         with b_c2:
-            sel_ct = st.number_input("Top Skin / Core (y px)", min_value=sel_pt+1, max_value=h-3, value=max(sel_pt+1, auto_ct), step=2)
+            sel_ct = st.number_input("Top Skin / Core (y px)", min_value=sel_pt+1, max_value=h-3, value=max(sel_pt+1, auto_ct), step=2, key=f"ct_{source_title}")
         with b_c3:
-            sel_cb = st.number_input("Core / Bot Skin (y px)", min_value=sel_ct+1, max_value=h-2, value=max(sel_ct+1, auto_cb), step=2)
+            sel_cb = st.number_input("Core / Bot Skin (y px)", min_value=sel_ct+1, max_value=h-2, value=max(sel_ct+1, auto_cb), step=2, key=f"cb_{source_title}")
         with b_c4:
-            sel_pb = st.number_input("Bottom Surface (y px)", min_value=sel_cb+1, max_value=h-1, value=max(sel_cb+1, auto_pb), step=2)
+            sel_pb = st.number_input("Bottom Surface (y px)", min_value=sel_cb+1, max_value=h-1, value=max(sel_cb+1, auto_pb), step=2, key=f"pb_{source_title}")
             
     res = analyze_sample(
         selected_image_gray, 
@@ -573,8 +573,19 @@ if selected_image_gray is not None:
         st.subheader("Direct Fiber Volume Fraction ($V_f$) Estimation")
         st.markdown(
             f"Estimated Global Fiber Volume Fraction: **{res['global_fiber_pct']:.1f}%** "
-            f"(Directly estimated from imagery: fibers = white lines & dots, resin matrix = dark background)."
+            f"(Measured strictly on physical specimen: {res['part_h_px']} px high × {res['sample_w_px']} px wide)."
         )
+        
+        with st.expander(":material/info: How $V_f$ is Calculated (Methodology & Physics)", expanded=False):
+            st.markdown(
+                "**1. Material Density Contrast:**\n"
+                "- **Glass Fibers ($SiO_2$, $\\rho \\approx 2.54\\,\\text{g/cm}^3$):** Higher electron density causes strong X-ray attenuation, appearing as bright white/light-grey lines (in-plane) and dots (cross-sectional).\n"
+                "- **Polymer Matrix (Polyamide/PP, $\\rho \\approx 1.1\\,\\text{g/cm}^3$):** Lower attenuation, appearing as the dark grey background.\n\n"
+                "**2. Local Adaptive Thresholding:**\n"
+                "- Segments high-contrast fiber pixels using an $11\\times 11\\text{ px}$ local Gaussian neighborhood filter over the specimen region $[x_{\\text{left}}:x_{\\text{right}}, y_{\\text{top}}:y_{\\text{bot}}]$.\n"
+                "- Calculation: $V_f = \\frac{\\text{Fiber Pixels}}{\\text{Total Specimen Pixels}} \\times 100\\%$.\n"
+                "- The algorithm is 100% deterministic (repeatable) on any given specimen region."
+            )
         
         # Fiber mask visualization
         fib_vis = cv2.cvtColor(res['image_gray'], cv2.COLOR_GRAY2BGR)
