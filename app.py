@@ -275,36 +275,31 @@ def draw_segmentation_overlay(img_gray, res, alpha=0.35):
     cv2.addWeighted(color_mask, alpha, overlay, 1 - alpha, 0, overlay)
     
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 1.65
-    text_thick = 4
-    line_thick = 4
-    pad = 8
+    font_scale = 0.85
+    text_thick = 2
+    line_thick = 2
     
-    def draw_text_badge(img, text, x, y, text_color):
-        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, text_thick)
-        y_box_top = max(0, y - th - pad)
-        y_box_bot = min(h, y + baseline + pad)
-        x_box_right = min(w, x + tw + pad)
-        # Background dark pill
-        cv2.rectangle(img, (x - pad, y_box_top), (x_box_right, y_box_bot), (15, 15, 15), -1)
-        # Text
+    def draw_text_clean(img, text, x, y, text_color):
+        # Draw black outline first so it never requires an opaque box
+        cv2.putText(img, text, (x, y), font, font_scale, (0, 0, 0), text_thick + 2, cv2.LINE_AA)
+        # Draw colored text
         cv2.putText(img, text, (x, y), font, font_scale, text_color, text_thick, cv2.LINE_AA)
     
     if y_pt > 0:
-        cv2.line(overlay, (0, y_pt), (w, y_pt), (200, 200, 200), line_thick)
-        draw_text_badge(overlay, f"Top Surface (y={y_pt}px)", 25, max(y_pt - 16, 50), (220, 220, 220))
+        cv2.line(overlay, (0, y_pt), (w, y_pt), (220, 220, 220), line_thick)
+        draw_text_clean(overlay, f"Top Surface (y={y_pt}px)", 20, max(y_pt - 10, 25), (240, 240, 240))
         
     if y_ct > y_pt:
         cv2.line(overlay, (0, y_ct), (w, y_ct), (0, 255, 255), line_thick)
-        draw_text_badge(overlay, f"Top Skin / Core (y={y_ct}px | Top Skin = {res['top_skin_mm']:.2f}mm / {res['top_skin_pct']:.1f}%)", 25, max(y_ct - 16, 50), (0, 255, 255))
+        draw_text_clean(overlay, f"Top Skin / Core (y={y_ct}px | Top Skin = {res['top_skin_mm']:.2f}mm / {res['top_skin_pct']:.1f}%)", 20, max(y_ct - 10, 25), (0, 255, 255))
         
     if y_cb < y_pb:
         cv2.line(overlay, (0, y_cb), (w, y_cb), (0, 255, 255), line_thick)
-        draw_text_badge(overlay, f"Core / Bot Skin (y={y_cb}px | Core = {res['core_mm']:.2f}mm / {res['core_pct']:.1f}%)", 25, min(y_cb + 55, h - 30), (0, 255, 255))
+        draw_text_clean(overlay, f"Core / Bot Skin (y={y_cb}px | Core = {res['core_mm']:.2f}mm / {res['core_pct']:.1f}%)", 20, min(y_cb + 28, h - 15), (0, 255, 255))
         
     if y_pb < h - 1:
-        cv2.line(overlay, (0, y_pb), (w, y_pb), (200, 200, 200), line_thick)
-        draw_text_badge(overlay, f"Bottom Surface (y={y_pb}px | Bot Skin = {res['bot_skin_mm']:.2f}mm / {res['bot_skin_pct']:.1f}%)", 25, min(y_pb + 55, h - 30), (220, 220, 220))
+        cv2.line(overlay, (0, y_pb), (w, y_pb), (220, 220, 220), line_thick)
+        draw_text_clean(overlay, f"Bottom Surface (y={y_pb}px | Bot Skin = {res['bot_skin_mm']:.2f}mm / {res['bot_skin_pct']:.1f}%)", 20, min(y_pb + 28, h - 15), (240, 240, 240))
         
     return overlay
 
