@@ -196,22 +196,7 @@ def analyze_sample(img_gray, x_part_left, x_part_right, y_part_top, y_core_top, 
     bot_skin_pct = (bot_skin_px / part_h_px) * 100.0
     total_skin_pct = (total_skin_px / part_h_px) * 100.0
     
-    # 2. Structure tensor for fiber orientation mapping
-    Ix = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=3)
-    Iy = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=3)
-    
-    Jxx = cv2.GaussianBlur(Ix**2, (blur_ksize, blur_ksize), 0)
-    Jyy = cv2.GaussianBlur(Iy**2, (blur_ksize, blur_ksize), 0)
-    Jxy = cv2.GaussianBlur(Ix * Iy, (blur_ksize, blur_ksize), 0)
-    
-    denom = Jxx + Jyy + 1e-8
-    a11_map = Jyy / denom
-    a22_map = Jxx / denom
-    
-    theta_rad = 0.5 * np.arctan2(2 * Jxy, Jyy - Jxx) + (np.pi / 2.0)
-    theta_deg = (np.degrees(theta_rad)) % 180.0
-    
-    # 3. Direct Fiber Volume Fraction (Vf) Estimation (Sample region only)
+    # 2. Direct Fiber Volume Fraction (Vf) Estimation (Sample region only)
     sample_roi = img_gray[y_part_top:y_part_bot + 1, x_part_left:x_part_right + 1]
     fiber_mask = cv2.adaptiveThreshold(sample_roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 0)
     global_fiber_pct = float(np.mean(fiber_mask > 0) * 100.0)
@@ -220,11 +205,7 @@ def analyze_sample(img_gray, x_part_left, x_part_right, y_part_top, y_core_top, 
     full_fiber_mask = np.zeros_like(img_gray, dtype=np.uint8)
     full_fiber_mask[y_part_top:y_part_bot + 1, x_part_left:x_part_right + 1] = fiber_mask
     
-    # Global orientation
-    global_a11 = float(np.mean(a11_map[y_part_top:y_part_bot + 1, x_part_left:x_part_right + 1]))
-    global_a22 = 1.0 - global_a11
-    
-    # 4. Through-thickness profile dataframe
+    # 3. Through-thickness fiber density profile dataframe
     num_slices = 50
     step = part_h_px / num_slices
     profile_rows = []
@@ -237,12 +218,7 @@ def analyze_sample(img_gray, x_part_left, x_part_right, y_part_top, y_core_top, 
         ye = min(ye, h)
         
         slice_fib = full_fiber_mask[ys:ye, x_part_left:x_part_right + 1]
-        slice_a11 = a11_map[ys:ye, x_part_left:x_part_right + 1]
-        slice_a22 = a22_map[ys:ye, x_part_left:x_part_right + 1]
-        
         f_pct = float(np.mean(slice_fib > 0) * 100.0)
-        a11_v = float(np.mean(slice_a11))
-        a22_v = float(np.mean(slice_a22))
         
         y_mid = (ys + ye) / 2.0
         if y_mid < y_core_top:
@@ -261,8 +237,6 @@ def analyze_sample(img_gray, x_part_left, x_part_right, y_part_top, y_core_top, 
             'Y_End': ye,
             'Normalized_Z': z_norm,
             'Depth_mm': depth_mm,
-            'A11': np.clip(a11_v, 0.0, 1.0),
-            'A22': np.clip(a22_v, 0.0, 1.0),
             'Fiber_Pct': f_pct,
             'Zone': zone_name
         })
@@ -300,12 +274,7 @@ def analyze_sample(img_gray, x_part_left, x_part_right, y_part_top, y_core_top, 
         'bot_skin_pct': bot_skin_pct,
         'total_skin_pct': total_skin_pct,
         'global_fiber_pct': global_fiber_pct,
-        'global_a11': global_a11,
-        'global_a22': global_a22,
         'full_fiber_mask': full_fiber_mask,
-        'a11_map': a11_map,
-        'a22_map': a22_map,
-        'theta_deg': theta_deg,
         'df_profile': df_profile,
         'image_gray': img_gray
     }
@@ -528,10 +497,9 @@ if selected_image_gray is not None:
     # ---------------------------------------------------------
     # MAIN TABS (In exact requested order; Background is the last tab)
     # ---------------------------------------------------------
-    tab_layers, tab_fiber, tab_orientation, tab_guide = st.tabs([
+    tab_layers, tab_fiber, tab_guide = st.tabs([
         ":material/straighten: Layer Thickness & Segmentation",
         ":material/percent: Fiber Volume Fraction (Vf)",
-        ":material/show_chart: Orientation Profile (A11 vs A22)",
         ":material/menu_book: Background & Reference Guide"
     ])
     
@@ -613,40 +581,7 @@ if selected_image_gray is not None:
             fig_fib.update_traces(line_color='#3B82F6', line_width=2.5)
             st.plotly_chart(fig_fib, width="stretch")
 
-    # TAB 3: ORIENTATION PROFILE
-    with tab_orientation:
-        st.subheader("Through-Thickness Fiber Orientation Tensor Profile")
-        st.markdown("Quantifies flow-direction orientation ($A_{11}$) vs transverse orientation ($A_{22}$) from top mold skin to center core.")
-        
-        with st.container(border=True):
-            fig_prof = go.Figure()
-            fig_prof.add_trace(go.Scatter(
-                x=res['df_profile']['Normalized_Z'],
-                y=res['df_profile']['A11'],
-                mode='lines+markers',
-                name='A11 (Parallel to Flow Axis)',
-                line=dict(color='#10B981', width=3),
-                marker=dict(size=6)
-            ))
-            fig_prof.add_trace(go.Scatter(
-                x=res['df_profile']['Normalized_Z'],
-                y=res['df_profile']['A22'],
-                mode='lines+markers',
-                name='A22 (Perpendicular Transverse)',
-                line=dict(color='#EF4444', width=2, dash='dot'),
-                marker=dict(size=5)
-            ))
-            fig_prof.add_vline(x=0.0, line_dash="solid", line_color="gray", opacity=0.4, annotation_text="Center Core (z=0)")
-            fig_prof.update_layout(
-                title="Through-Thickness Fiber Orientation Tensor Profile ($A_{11}$ vs $A_{22}$)",
-                xaxis_title="Normalized Thickness z_norm [ +1.0 = Top Mold Skin, 0.0 = Center Core, -1.0 = Bottom Mold Skin ]",
-                yaxis_title="Orientation Tensor Component Value (0.0 to 1.0)",
-                yaxis=dict(range=[0.0, 1.0]),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            st.plotly_chart(fig_prof, width="stretch")
-
-    # TAB 4: BACKGROUND & REFERENCE GUIDE (Last tab)
+    # TAB 3: BACKGROUND & REFERENCE GUIDE (Last tab)
     with tab_guide:
         st.subheader("Microstructure & Cross-Section Reference Guide")
         st.info(
