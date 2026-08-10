@@ -336,70 +336,77 @@ def draw_segmentation_overlay(img_gray, res, alpha=0.35):
     if xr < w - 1:
         color_mask[:, xr:w] = [20, 20, 20]
         
-    # Top & bottom skin (green)
+    # 5-zone color shading on physical sample
     if y_ct > y_pt:
         color_mask[y_pt:y_ct, xl:xr+1] = [0, 200, 80]
     if y_pb > y_cb:
         color_mask[y_cb:y_pb, xl:xr+1] = [0, 200, 80]
-        
-    # Core (yellow/amber)
     if y_cb > y_ct:
         color_mask[y_ct:y_cb, xl:xr+1] = [0, 180, 255]
         
     cv2.addWeighted(color_mask, alpha, overlay, 1 - alpha, 0, overlay)
     
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.85
-    text_thick = 2
-    line_thick = 2
-    
-    def draw_text_clean(img, text, x, y, text_color):
-        cv2.putText(img, text, (x, y), font, font_scale, (0, 0, 0), text_thick + 2, cv2.LINE_AA)
-        cv2.putText(img, text, (x, y), font, font_scale, text_color, text_thick, cv2.LINE_AA)
-        
-    # Draw left and right trim demarcation
-    if xl > 0:
-        cv2.line(overlay, (xl, 0), (xl, h), (180, 180, 180), line_thick)
-        draw_text_clean(overlay, f"Left Edge (x={xl}px)", xl + 8, 40, (200, 200, 200))
-    if xr < w - 1:
-        cv2.line(overlay, (xr, 0), (xr, h), (180, 180, 180), line_thick)
-        draw_text_clean(overlay, f"Right Edge (x={xr}px)", max(10, xr - 280), 40, (200, 200, 200))
-    
-    # Draw horizontal boundary lines
+    # Draw crisp boundary lines across the CT scan image
+    line_w = max(2, int(h / 450))
     if y_pt > 0:
-        cv2.line(overlay, (xl, y_pt), (xr, y_pt), (220, 220, 220), line_thick)
-        draw_text_clean(overlay, f"Top Surface (y={y_pt}px)", xl + 20, max(y_pt - 10, 25), (240, 240, 240))
-        
+        cv2.line(overlay, (xl, y_pt), (w, y_pt), (220, 220, 220), line_w)
     if y_ct > y_pt:
-        cv2.line(overlay, (xl, y_ct), (xr, y_ct), (0, 255, 255), line_thick)
-        draw_text_clean(overlay, f"Top Skin / Core (y={y_ct}px | Top Skin = {res['top_skin_mm']:.2f}mm / {res['top_skin_pct']:.1f}%)", xl + 20, max(y_ct - 10, 25), (0, 255, 255))
-        
+        cv2.line(overlay, (xl, y_ct), (w, y_ct), (0, 255, 255), line_w)
     if y_cb < y_pb:
-        cv2.line(overlay, (xl, y_cb), (xr, y_cb), (0, 255, 255), line_thick)
-        draw_text_clean(overlay, f"Core / Bot Skin (y={y_cb}px | Core = {res['core_mm']:.2f}mm / {res['core_pct']:.1f}%)", xl + 20, min(y_cb + 28, h - 15), (0, 255, 255))
-        
+        cv2.line(overlay, (xl, y_cb), (w, y_cb), (0, 255, 255), line_w)
     if y_pb < h - 1:
-        cv2.line(overlay, (xl, y_pb), (xr, y_pb), (220, 220, 220), line_thick)
-        draw_text_clean(overlay, f"Bottom Surface (y={y_pb}px | Bot Skin = {res['bot_skin_mm']:.2f}mm / {res['bot_skin_pct']:.1f}%)", xl + 20, min(y_pb + 28, h - 15), (240, 240, 240))
+        cv2.line(overlay, (xl, y_pb), (w, y_pb), (220, 220, 220), line_w)
         
-    # Vertical dimension indicator bracket on the right side of the sample
-    dim_x = min(xr - 50, w - 80)
-    if dim_x > xl + 300:
-        cv2.line(overlay, (dim_x, y_pt), (dim_x, y_pb), (0, 220, 255), 3)
-        # Top bracket cap & arrow
-        cv2.line(overlay, (dim_x - 15, y_pt), (dim_x + 15, y_pt), (0, 220, 255), 3)
-        cv2.line(overlay, (dim_x, y_pt), (dim_x - 8, y_pt + 12), (0, 220, 255), 3)
-        cv2.line(overlay, (dim_x, y_pt), (dim_x + 8, y_pt + 12), (0, 220, 255), 3)
-        # Bottom bracket cap & arrow
-        cv2.line(overlay, (dim_x - 15, y_pb), (dim_x + 15, y_pb), (0, 220, 255), 3)
-        cv2.line(overlay, (dim_x, y_pb), (dim_x - 8, y_pb - 12), (0, 220, 255), 3)
-        cv2.line(overlay, (dim_x, y_pb), (dim_x + 8, y_pb - 12), (0, 220, 255), 3)
-        # Vertical measurement text placed at the top near the arrow cap (clearing the core)
-        dim_text = f"Total Thickness: {res['actual_thickness_mm']:.2f} mm ({res['part_h_px']} px)"
-        text_y = max(y_pt + 30, 45)
-        draw_text_clean(overlay, dim_text, max(10, dim_x - 560), text_y, (0, 220, 255))
+    if xl > 0:
+        cv2.line(overlay, (xl, 0), (xl, h), (160, 160, 160), line_w)
+    if xr < w - 1:
+        cv2.line(overlay, (xr, 0), (xr, h), (160, 160, 160), line_w)
         
-    return overlay
+    # Create clean canvas with dedicated right-hand annotation panel (Zero text overlapping CT scan)
+    gutter_w = max(560, int(w * 0.18))
+    canvas = np.full((h, w + gutter_w, 3), (18, 20, 24), dtype=np.uint8)
+    canvas[:, 0:w] = overlay
+    cv2.line(canvas, (w, 0), (w, h), (60, 65, 75), 2)
+    
+    # Scale font size dynamically based on image height
+    f_scale = max(0.85, min(1.2, h / 750.0))
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    thick = 2
+    
+    # 1. Total Sample Thickness Header Card at top of annotation panel
+    card_h = max(75, int(h * 0.13))
+    cv2.rectangle(canvas, (w + 15, 15), (w + gutter_w - 15, card_h), (28, 32, 38), -1)
+    cv2.rectangle(canvas, (w + 15, 15), (w + gutter_w - 15, card_h), (0, 200, 240), 2)
+    cv2.putText(canvas, "TOTAL SAMPLE THICKNESS", (w + 30, int(card_h * 0.42)), font, f_scale * 0.75, (160, 175, 190), 2, cv2.LINE_AA)
+    cv2.putText(canvas, f"{res['actual_thickness_mm']:.2f} mm  ({res['part_h_px']} px)", (w + 30, int(card_h * 0.85)), font, f_scale * 1.15, (0, 225, 255), 2, cv2.LINE_AA)
+    
+    # 2. Boundary Pointer Lines & Clear Labels in the side panel
+    ptr_len = 35
+    for y_pos, label, color in [
+        (y_pt, f"Top Surface (y={y_pt}px)", (240, 240, 240)),
+        (y_ct, f"Top Skin / Core (y={y_ct}px)", (0, 240, 255)),
+        (y_cb, f"Core / Bot Skin (y={y_cb}px)", (0, 240, 255)),
+        (y_pb, f"Bottom Surface (y={y_pb}px)", (240, 240, 240))
+    ]:
+        if 0 <= y_pos < h:
+            cv2.line(canvas, (w, y_pos), (w + ptr_len, y_pos), color, 2)
+            cv2.circle(canvas, (w + ptr_len, y_pos), 4, color, -1)
+            cv2.putText(canvas, label, (w + ptr_len + 15, y_pos + int(6 * f_scale)), font, f_scale * 0.85, color, thick, cv2.LINE_AA)
+            
+    # 3. Layer Measurement Callout Cards in the side panel
+    y_mid_top = (y_pt + y_ct) // 2
+    if y_mid_top > card_h + 30 and y_mid_top < y_ct - 25:
+        cv2.rectangle(canvas, (w + ptr_len + 15, y_mid_top - 22), (w + gutter_w - 20, y_mid_top + 22), (20, 38, 28), -1)
+        cv2.rectangle(canvas, (w + ptr_len + 15, y_mid_top - 22), (w + gutter_w - 20, y_mid_top + 22), (0, 180, 80), 1)
+        cv2.putText(canvas, f"Top Skin: {res['top_skin_mm']:.2f} mm ({res['top_skin_px']} px)", (w + ptr_len + 25, y_mid_top + 6), font, f_scale * 0.88, (80, 240, 140), 2, cv2.LINE_AA)
+        
+    y_mid_bot = (y_cb + y_pb) // 2
+    if y_mid_bot > y_cb + 25 and y_mid_bot < h - 25:
+        cv2.rectangle(canvas, (w + ptr_len + 15, y_mid_bot - 22), (w + gutter_w - 20, y_mid_bot + 22), (20, 38, 28), -1)
+        cv2.rectangle(canvas, (w + ptr_len + 15, y_mid_bot - 22), (w + gutter_w - 20, y_mid_bot + 22), (0, 180, 80), 1)
+        cv2.putText(canvas, f"Bot Skin: {res['bot_skin_mm']:.2f} mm ({res['bot_skin_px']} px)", (w + ptr_len + 25, y_mid_bot + 6), font, f_scale * 0.88, (80, 240, 140), 2, cv2.LINE_AA)
+        
+    return canvas
 
 
 # ---------------------------------------------------------
