@@ -9,13 +9,26 @@ import os
 import zipfile
 from PIL import Image, ImageSequence
 
+# Base paths for bundled example images
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CT_IMAGES_DIR = os.path.join(BASE_DIR, "CT Scan Images")
+
+xz_core_path = os.path.join(CT_IMAGES_DIR, "black, 90deg, xz plane with core.png")
+xy_skin_path = os.path.join(CT_IMAGES_DIR, "black, 90deg, xy plane, only skin.png")
+xz_core2_path = os.path.join(CT_IMAGES_DIR, "black, 90deg, xz plane with core2.png")
+xy_skin2_path = os.path.join(CT_IMAGES_DIR, "black, 90deg, xy plane, only skin2.png")
+
+sample_0_path = os.path.join(BASE_DIR, "sample_ct_0deg.png")
+sample_45_path = os.path.join(BASE_DIR, "sample_ct_45deg.png")
+sample_90_path = os.path.join(BASE_DIR, "sample_ct_90deg.png")
+
 st.set_page_config(page_title="CT Fiber Orientation Analyzer (Through-Thickness)", page_icon=":material/layers:", layout="wide")
 
 st.title(":material/layers: CT Scan Through-Thickness Fiber Orientation Analyzer")
 
 st.markdown(r"""
 Quantitative **Through-Thickness ($Z$-axis)** fiber orientation tensor analysis for injection-molded tensile dogbones and plaques.
-Iterates through 3D CT scan slice stacks along the thickness direction, extracts 2D orientation tensors ($A_{11}$ and $A_{22}$), maps the **Skin-Core effect**, and predicts volume-averaged tensile properties.
+Iterates through 3D CT scan slice stacks along the thickness direction, extracts 2D orientation tensors ($A_{11}$ and $A_{22}$), maps the **Skin-Core effect**, and predicts volume-averaged tensile properties for FEA simulation calibration.
 """)
 
 # Sidebar Controls
@@ -221,6 +234,19 @@ elif uploaded_files:
                 stack_slices.append(img)
         stack_source_name = f"{len(stack_slices)} Uploaded Image Slices"
 
+# Process slices if available
+df_tensor = None
+slice_results = []
+num_z = 0
+global_a11 = 0.0
+global_a22 = 0.0
+e_predicted_gpa = 0.0
+skin_pct = 0.0
+core_pct = 0.0
+num_skin = 0
+num_core = 0
+ratio_str = ""
+
 if stack_slices:
     # Downsample / Bin Slices if requested
     if slice_binning > 1:
@@ -231,7 +257,6 @@ if stack_slices:
     num_z = len(binned_slices)
     
     # Iterate through Z-Axis Slices and Calculate Orientation Tensors
-    slice_results = []
     z_norms = [2.0 * z / (num_z - 1.0) - 1.0 for z in range(num_z)] if num_z > 1 else [0.0]
     
     for z_idx, img in enumerate(binned_slices):
@@ -277,19 +302,119 @@ if stack_slices:
     with kpi_c4:
         st.metric("Predicted Tensile Modulus", f"{e_predicted_gpa:.2f} GPa", help="Micro-mechanical prediction based on A11_global, Ef, Em, and Vf", border=True)
         
-    st.write("")
+st.write("")
+
+# Define Application Tabs
+tab_bg, tab_profile, tab_explorer, tab_table, tab_export = st.tabs([
+    ":material/menu_book: Background & Specimen Guide",
+    ":material/show_chart: Through-Thickness Profile", 
+    ":material/search: Interactive Slice Explorer", 
+    ":material/table_chart: Tensor Component Data", 
+    ":material/download: Export Metrics"
+])
+
+# ---------------------------------------------------------
+# TAB 1: BACKGROUND & SPECIMEN CROSS-SECTION GUIDE
+# ---------------------------------------------------------
+with tab_bg:
+    st.subheader("Microstructure Anisotropy & CT Scan Cross-Section Guide")
     
-    tab_profile, tab_explorer, tab_table, tab_export = st.tabs([
-        "📈 Through-Thickness Profile", 
-        "🔍 Interactive Slice Explorer", 
-        "📊 Tensor Component Data", 
-        "💾 Export Metrics"
-    ])
+    # FEA Context Callout
+    st.info(
+        "**Finite Element Analysis (FEA) Simulation Context:**\n\n"
+        "In short-glass-fiber reinforced injection-molded polymers (SFRTPs), high shear rates along the mold walls freeze fibers parallel to the flow direction (forming the outer **Skin Layer**), while slower extensional flow at the center causes fibers to orient transversely or randomly (forming the internal **Core Layer**).\n\n"
+        "Capturing this through-thickness **fiber variance** is critical for establishing accurate anisotropic constitutive material models (material cards) in FEA solvers (such as Abaqus, ANSYS, Moldflow, and Digimat). Standard isotropic approximations or incomplete surface analyses lead to significant discrepancies in stiffness, stress concentration, and structural failure predictions."
+    )
     
-    # ---------------------------------------------------------
-    # TAB 1: THROUGH-THICKNESS PROFILE GRAPH
-    # ---------------------------------------------------------
-    with tab_profile:
+    st.markdown("### 🔬 How to Input CT Scan Cross-Sections")
+    st.markdown(
+        "To accurately determine fiber orientation, measure layer thicknesses, and calibrate FEA material cards, "
+        "**users must input cross-sections that encompass the entire through-thickness profile (capturing both the outer skin effect and the central core).**"
+    )
+    
+    with st.container(border=True):
+        st.markdown(
+            "#### ⚠️ Why Analyzing Only the Top Layer is Insufficient\n\n"
+            "- **Top-Layer Only (XY Surface Slice):** Capturing only the surface of the molded coupon reflects *only* the highly aligned skin layer ($A_{11} \\approx 0.7 - 0.9$). Analyzing this alone introduces severe sampling bias, falsely indicating that the entire cross-section is aligned in the flow direction. This artificially inflates predicted tensile stiffness and conceals the compliant transverse core.\n\n"
+            "- **Full Cross-Section (XZ / YZ Plane or Sequential Z-Stack):** Capturing the complete thickness reveals both the stiff outer skin layers ($A_{11} \\ge 0.5$) and the transverse core layer ($A_{11} < 0.5$). This enables the analyzer to quantify true layer thicknesses, locate transition inflection points, calculate the skin-to-core ratio, and compute volume-averaged tensor properties for FEA."
+        )
+    
+    st.markdown("### 🖼️ Example Cross-Section Comparison")
+    st.caption("Comparison of valid through-thickness CT scans versus insufficient surface-only slices from the CT scan analyzer dataset.")
+    
+    ex_c1, ex_c2 = st.columns(2)
+    with ex_c1:
+        with st.container(border=True):
+            st.markdown("**:material/check_circle: Valid Input: Full Through-Thickness Cross-Section (XZ Plane)**")
+            st.caption("Cross-section capturing both top/bottom mold skin layers and central core.")
+            if os.path.exists(xz_core_path):
+                st.image(xz_core_path, width="stretch", caption="Example CT Scan: XZ Cross-Section with distinct Skin & Core Layers")
+            else:
+                st.warning("Example image `black, 90deg, xz plane with core.png` not found.")
+            st.markdown(
+                "- **Skin Regions:** High fiber alignment parallel to melt flow along mold walls ($z = \\pm 1.0$).\n"
+                "- **Core Region:** Fibers oriented transversely in the central thickness zone ($z = 0.0$).\n"
+                "- **FEA Significance:** Captures the full through-thickness fiber variance needed for multi-layer anisotropic modeling."
+            )
+            
+    with ex_c2:
+        with st.container(border=True):
+            st.markdown("**:material/cancel: Insufficient Input: Top Surface Layer Only (XY Plane)**")
+            st.caption("Planar slice capturing only the superficial skin layer without core context.")
+            if os.path.exists(xy_skin_path):
+                st.image(xy_skin_path, width="stretch", caption="Example CT Scan: XY Planar Slice showing Only Skin (Surface)")
+            else:
+                st.warning("Example image `black, 90deg, xy plane, only skin.png` not found.")
+            st.markdown(
+                "- **Limitation:** Contains zero data on the inner core layer thickness or transverse orientation.\n"
+                "- **Sampling Bias:** Produces an artificially high longitudinal orientation tensor ($A_{11} \\approx 1.0$).\n"
+                "- **FEA Risk:** Leads to unrepresentative material cards and inaccurate deflection/failure predictions."
+            )
+
+    # Expandable Gallery for Additional Reference Scans
+    with st.expander(":material/photo_library: View Additional Specimen Cross-Sections & Directional Reference Scans"):
+        st.markdown("**Additional High-Resolution Specimen Scans:**")
+        sub_c1, sub_c2 = st.columns(2)
+        with sub_c1:
+            if os.path.exists(xz_core2_path):
+                st.image(xz_core2_path, width="stretch", caption="Secondary Specimen: XZ Through-Thickness Cross-Section with Core")
+        with sub_c2:
+            if os.path.exists(xy_skin2_path):
+                st.image(xy_skin2_path, width="stretch", caption="Secondary Specimen: XY Surface Slice (Only Skin)")
+                
+        st.divider()
+        st.markdown("**Reference Scans Across Tensile Coupon Cut Orientations:**")
+        dir_c1, dir_c2, dir_c3 = st.columns(3)
+        with dir_c1:
+            if os.path.exists(sample_0_path):
+                st.image(sample_0_path, width="stretch", caption="0° Cut Orientation (Fibers Parallel to Tensile Load)")
+        with dir_c2:
+            if os.path.exists(sample_45_path):
+                st.image(sample_45_path, width="stretch", caption="45° Cut Orientation (Diagonal Fiber Alignment)")
+        with dir_c3:
+            if os.path.exists(sample_90_path):
+                st.image(sample_90_path, width="stretch", caption="90° Cut Orientation (Transverse Fibers Perpendicular to Load)")
+
+    st.markdown("### 📊 Key Research Capabilities for FEA Enhancement")
+    cap_c1, cap_c2, cap_c3 = st.columns(3)
+    with cap_c1:
+        with st.container(border=True):
+            st.markdown("**:material/percent: 1. Fiber Volume Fraction ($V_f$)**")
+            st.caption("Quantifies local and global fiber loading percentage to scale micromechanical homogenization equations (Halpin-Tsai / Rule of Mixtures).")
+    with cap_c2:
+        with st.container(border=True):
+            st.markdown("**:material/straighten: 2. Layer Thickness & Skin Effect**")
+            st.caption("Measures physical skin vs. core layer thicknesses, identifies inflection point boundaries, and computes the volumetric skin-to-core ratio.")
+    with cap_c3:
+        with st.container(border=True):
+            st.markdown("**:material/rotate_right: 3. Orientation Tensors ($A_{11}, A_{22}$)**")
+            st.caption("Determines second-order orientation tensors through thickness to populate anisotropic material cards directly into Abaqus, ANSYS, and Moldflow.")
+
+# ---------------------------------------------------------
+# TAB 2: THROUGH-THICKNESS PROFILE GRAPH
+# ---------------------------------------------------------
+with tab_profile:
+    if df_tensor is not None:
         st.subheader("Through-Thickness Orientation Tensor Profile ($A_{11}$ vs $A_{22}$)")
         st.markdown(r"""
         Line chart displaying the **Skin-Core Effect** along normalized thickness $z_{\text{norm}} \in [-1.0, 1.0]$. 
@@ -362,11 +487,14 @@ if stack_slices:
                 st.write(f"- **Skin-to-Core Ratio**: `{ratio_str}`")
                 st.write(f"- **Volume-Averaged Tensor $A_{{11,\\text{{global}}}}$**: `{global_a11:.3f}`")
                 st.write(f"- **Estimated Tensile Modulus $E_{{\\text{{tensile}}}}$**: `{e_predicted_gpa:.2f} GPa`")
+    else:
+        st.info("Please upload a 3D CT scan stack or toggle the synthetic 3D stack from the top control to view through-thickness profile curves.")
 
-    # ---------------------------------------------------------
-    # TAB 2: INTERACTIVE SLICE EXPLORER
-    # ---------------------------------------------------------
-    with tab_explorer:
+# ---------------------------------------------------------
+# TAB 3: INTERACTIVE SLICE EXPLORER
+# ---------------------------------------------------------
+with tab_explorer:
+    if df_tensor is not None and len(slice_results) > 0:
         st.subheader("Interactive Through-Thickness Slice Explorer")
         st.markdown("Scrub through depth slices along the Z-axis to inspect local fiber structure tensor vector overlays and slice metrics.")
         
@@ -395,18 +523,24 @@ if stack_slices:
         with sl_m3:
             region_label = "Skin Region (Parallel Flow)" if target_res['A11'] >= 0.5 else "Core Region (Transverse Flow)"
             st.metric("Layer Morphology", region_label, border=True)
+    else:
+        st.info("Please upload a 3D CT scan stack or toggle the synthetic 3D stack from the top control to inspect individual depth slices.")
 
-    # ---------------------------------------------------------
-    # TAB 3: TENSOR COMPONENT DATA TABLE
-    # ---------------------------------------------------------
-    with tab_table:
+# ---------------------------------------------------------
+# TAB 4: TENSOR COMPONENT DATA TABLE
+# ---------------------------------------------------------
+with tab_table:
+    if df_tensor is not None:
         st.subheader("Through-Thickness Orientation Tensor Data Table")
         st.dataframe(df_tensor, width="stretch", hide_index=True)
+    else:
+        st.info("Please upload a 3D CT scan stack or toggle the synthetic 3D stack from the top control to view tensor component data.")
 
-    # ---------------------------------------------------------
-    # TAB 4: EXPORT METRICS
-    # ---------------------------------------------------------
-    with tab_export:
+# ---------------------------------------------------------
+# TAB 5: EXPORT METRICS
+# ---------------------------------------------------------
+with tab_export:
+    if df_tensor is not None:
         st.subheader("Export Orientation Tensor Profile CSV")
         st.markdown("Download full through-thickness $A_{11}(z)$ and $A_{22}(z)$ orientation tensor components formatted for FEA modeling (e.g. Abaqus, ANSYS, Moldflow).")
         
@@ -417,8 +551,7 @@ if stack_slices:
             file_name='ct_through_thickness_fiber_orientation_tensor.csv',
             mime='text/csv',
         )
-
-else:
-    st.info("Please upload a 3D CT scan stack or toggle the synthetic 3D stack from the sidebar to begin through-thickness analysis.")
+    else:
+        st.info("Please upload a 3D CT scan stack or toggle the synthetic 3D stack from the top control to export tensor metrics.")
 
 st.markdown("<br><br><p style='text-align: center; font-size: 11px; color: gray;'>Created by Product Design Engineering Intern, Advanced Architecture</p>", unsafe_allow_html=True)

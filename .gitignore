@@ -6,3 +6,8 @@ __pycache__/
 *.png
 *.jpg
 *.jpeg
+
+# Keep repository asset images
+!sample_ct_*.png
+!CT Scan Images/
+!CT Scan Images/**
