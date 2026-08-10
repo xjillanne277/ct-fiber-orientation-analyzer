@@ -124,7 +124,7 @@ def detect_5zone_layers(img_gray):
     return y_part_top, y_core_top, y_core_bot, y_part_bot
 
 
-def analyze_sample(img_gray, y_part_top, y_core_top, y_core_bot, y_part_bot, total_thick_mm=2.0, blur_ksize=21):
+def analyze_sample(img_gray, y_part_top, y_core_top, y_core_bot, y_part_bot, total_thick_mm=2.0, e_fiber_gpa=72.0, e_matrix_gpa=3.0, blur_ksize=21):
     h, w = img_gray.shape
     
     # 1. Structure tensor for fiber orientation mapping
@@ -370,7 +370,9 @@ if selected_image_gray is not None:
         sel_cb, 
         sel_pb, 
         total_thick_mm=specimen_thickness_mm,
-        blur_ksize=blur_kernel_size
+        e_fiber_gpa=e_fiber_gpa,
+        e_matrix_gpa=e_matrix_gpa,
+        blur_ksize=21
     )
     
     # KPI Metric Cards
