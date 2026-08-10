@@ -394,10 +394,10 @@ def draw_segmentation_overlay(img_gray, res, alpha=0.35):
         cv2.line(overlay, (dim_x - 15, y_pb), (dim_x + 15, y_pb), (0, 220, 255), 3)
         cv2.line(overlay, (dim_x, y_pb), (dim_x - 8, y_pb - 12), (0, 220, 255), 3)
         cv2.line(overlay, (dim_x, y_pb), (dim_x + 8, y_pb - 12), (0, 220, 255), 3)
-        # Vertical measurement text
-        y_mid = (y_pt + y_pb) // 2
+        # Vertical measurement text placed at the top near the arrow cap (clearing the core)
         dim_text = f"Total Thickness: {res['actual_thickness_mm']:.2f} mm ({res['part_h_px']} px)"
-        draw_text_clean(overlay, dim_text, dim_x - 520, y_mid + 8, (0, 220, 255))
+        text_y = max(y_pt + 30, 45)
+        draw_text_clean(overlay, dim_text, max(10, dim_x - 560), text_y, (0, 220, 255))
         
     return overlay
 
@@ -497,15 +497,15 @@ if selected_image_gray is not None:
         st.metric(
             "Total Skin Thickness", 
             f"{res['total_skin_mm']:.2f} mm", 
-            f"{res['total_skin_pct']:.1f}% of sample", 
-            help=f"Top Skin: {res['top_skin_mm']:.2f}mm ({res['top_skin_pct']:.1f}%) | Bot Skin: {res['bot_skin_mm']:.2f}mm ({res['bot_skin_pct']:.1f}%)",
+            f"{res['total_skin_px']} px", 
+            help=f"Top Skin: {res['top_skin_mm']:.2f}mm ({res['top_skin_px']} px) | Bot Skin: {res['bot_skin_mm']:.2f}mm ({res['bot_skin_px']} px)",
             border=True
         )
     with kpi_c4:
         st.metric(
             "Core Layer Thickness", 
             f"{res['core_mm']:.2f} mm", 
-            f"{res['core_pct']:.1f}% of sample", 
+            f"{res['core_px']} px", 
             help=f"Thin lighter section centered in sample ({res['core_px']} pixels)",
             border=True
         )
