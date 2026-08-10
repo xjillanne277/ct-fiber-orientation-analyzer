@@ -497,7 +497,6 @@ if selected_image_gray is not None:
         st.metric(
             "Total Skin Thickness", 
             f"{res['total_skin_mm']:.2f} mm", 
-            f"{res['total_skin_px']} px", 
             help=f"Top Skin: {res['top_skin_mm']:.2f}mm ({res['top_skin_px']} px) | Bot Skin: {res['bot_skin_mm']:.2f}mm ({res['bot_skin_px']} px)",
             border=True
         )
@@ -505,7 +504,6 @@ if selected_image_gray is not None:
         st.metric(
             "Core Layer Thickness", 
             f"{res['core_mm']:.2f} mm", 
-            f"{res['core_px']} px", 
             help=f"Thin lighter section centered in sample ({res['core_px']} pixels)",
             border=True
         )
