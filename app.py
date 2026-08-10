@@ -7,7 +7,7 @@ import pandas as pd
 import os
 
 st.set_page_config(
-    page_title="CT Fiber & Layer Thickness Analyzer", 
+    page_title="CT Scan Analyzer", 
     page_icon=":material/layers:", 
     layout="wide"
 )
@@ -43,23 +43,10 @@ with st.sidebar:
     st.markdown("**Micromechanics Inputs (Halpin-Tsai / FEA):**")
     e_fiber_gpa = st.number_input("Fiber Modulus Ef (GPa)", min_value=1.0, max_value=500.0, value=72.0, step=1.0, help="E-glass fibers ~72 GPa")
     e_matrix_gpa = st.number_input("Matrix Modulus Em (GPa)", min_value=0.1, max_value=50.0, value=3.0, step=0.5, help="Polyamide/Polypropylene ~3.0 GPa")
-    
-    st.divider()
-    with st.expander(":material/menu_book: Quick Reference & Guide", expanded=False):
-        st.markdown(
-            "**Cross-Section Layer Model:**\n"
-            "1. **Non-Part (Top):** Smooth dark grey (background/air/mount; 0mm if cropped).\n"
-            "2. **Top Skin:** Dark grainy section (flow-aligned fibers).\n"
-            "3. **Core:** Thin lighter section centered in sample (transverse fibers).\n"
-            "4. **Bottom Skin:** Dark grainy section (flow-aligned fibers).\n"
-            "5. **Non-Part (Bottom):** Smooth dark grey (background/air/mount; 0mm if cropped).\n\n"
-            "**Fiber Volume Fraction ($V_f$):**\n"
-            "Directly estimated from imagery: fibers = white lines & dots; matrix = dark background. Typical short-glass resins are 30–40% glass filled."
-        )
 
 
 # ---------------------------------------------------------
-# CORE IMAGE ANALYSIS & RECOGNITION PIPELINE
+# CORE IMAGE ANALYSIS PIPELINE
 # ---------------------------------------------------------
 def detect_5zone_layers(img_gray):
     h, w = img_gray.shape
@@ -307,26 +294,22 @@ def draw_segmentation_overlay(img_gray, res, alpha=0.35):
 
 
 # ---------------------------------------------------------
-# MAIN UPLOAD & SPECIMEN SELECTION AREA (Clean & Prominent)
+# MAIN UPLOAD SECTION (Clean, Minimal, Single Upload Box)
 # ---------------------------------------------------------
-st.title(":material/layers: CT Scan Fiber & Layer Thickness Analyzer")
-st.caption("Automated skin-effect thickness measurement, core detection, and direct fiber volume fraction ($V_f$) estimation.")
+st.title("CT Scan Analyzer")
 
-# Clean prominent upload container
-with st.container(border=True):
-    up_col1, up_col2 = st.columns([3, 2])
-    with up_col1:
-        uploaded_file = st.file_uploader(
-            "Upload CT Scan Image (PNG, JPG, TIFF)",
-            type=["png", "jpg", "jpeg", "tif", "tiff"],
-            help="Drop your 2D cross-section micro-CT scan image here"
-        )
-    with up_col2:
-        preset_selection = st.selectbox(
-            "Or Choose a Demo Specimen Scan:",
-            ["(None - Use Uploaded File)"] + list(PRESET_DICT.keys()),
-            index=1 if uploaded_file is None else 0
-        )
+uploaded_file = st.file_uploader(
+    "Upload CT scan", 
+    type=["png", "jpg", "jpeg", "tif", "tiff"]
+)
+
+# Optional demo dropdown inside a subtle expander
+with st.expander("Or select from demo CT scans", expanded=False):
+    demo_selection = st.selectbox(
+        "Choose demo scan:", 
+        ["(None)"] + list(PRESET_DICT.keys()), 
+        index=0
+    )
 
 selected_image_gray = None
 source_title = ""
@@ -335,15 +318,15 @@ if uploaded_file is not None:
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     selected_image_gray = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
     source_title = uploaded_file.name
-elif preset_selection != "(None - Use Uploaded File)":
-    preset_path = PRESET_DICT[preset_selection]
+elif demo_selection != "(None)":
+    preset_path = PRESET_DICT[demo_selection]
     if os.path.exists(preset_path):
         img_bgr = cv2.imread(preset_path)
         selected_image_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        source_title = preset_selection
+        source_title = demo_selection
 
 # ---------------------------------------------------------
-# RUN ANALYSIS & DISPLAY DASHBOARD
+# RUN ANALYSIS & DISPLAY ONLY AFTER IMAGE IS UPLOADED
 # ---------------------------------------------------------
 if selected_image_gray is not None:
     h, w = selected_image_gray.shape
@@ -352,7 +335,7 @@ if selected_image_gray is not None:
     auto_pt, auto_ct, auto_cb, auto_pb = detect_5zone_layers(selected_image_gray)
     
     # Optional fine-tuning expander
-    with st.expander(":material/tune: Fine-Tune Boundaries (Optional Adjustment)", expanded=False):
+    with st.expander(":material/tune: Fine-Tune Boundaries (Optional)", expanded=False):
         b_c1, b_c2, b_c3, b_c4 = st.columns(4)
         with b_c1:
             sel_pt = st.number_input("Top Surface (y px)", min_value=0, max_value=h-4, value=auto_pt, step=2)
@@ -375,13 +358,13 @@ if selected_image_gray is not None:
         blur_ksize=21
     )
     
-    # KPI Metric Cards
+    # Top KPI Metric Cards
     kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5 = st.columns(5)
     with kpi_c1:
         st.metric(
             "Fiber Vol Fraction (Vf)", 
             f"{res['global_fiber_pct']:.1f}%", 
-            help="Estimated directly from imagery (glass fibers vs resin matrix; nominal 30-40% range)",
+            help="Estimated directly from imagery (fibers = white lines & dots, matrix = background; nominal 30-40% range)",
             border=True
         )
     with kpi_c2:
@@ -420,18 +403,18 @@ if selected_image_gray is not None:
     st.write("")
     
     # ---------------------------------------------------------
-    # MAIN TABS (Focused on Analysis & Output)
+    # MAIN TABS (In exact requested order; Background is the last tab)
     # ---------------------------------------------------------
     tab_layers, tab_fiber, tab_orientation, tab_guide = st.tabs([
         ":material/straighten: Layer Thickness & Segmentation",
         ":material/percent: Fiber Volume Fraction (Vf)",
         ":material/show_chart: Orientation Profile & FEA Data",
-        ":material/menu_book: Reference Guide & Background"
+        ":material/menu_book: Background & Reference Guide"
     ])
     
     # TAB 1: LAYER THICKNESS & SEGMENTATION
     with tab_layers:
-        st.subheader("Physical Layer Thickness Measurement & Segmentation")
+        st.subheader("Layer Thickness Measurement & Segmentation")
         st.caption(f"Specimen: `{source_title}` | Part Thickness: {res['part_h_px']} px ({specimen_thickness_mm:.2f} mm)")
         
         overlay_img = draw_segmentation_overlay(res['image_gray'], res)
@@ -467,7 +450,7 @@ if selected_image_gray is not None:
         st.subheader("Direct Fiber Volume Fraction ($V_f$) Estimation")
         st.markdown(
             f"Estimated Global Fiber Volume Fraction: **{res['global_fiber_pct']:.1f}%** "
-            f"(Typically between 30%–40% glass filled for standard injection molded resins)."
+            f"(Directly estimated from imagery: fibers = white lines & dots, resin matrix = dark background)."
         )
         
         # Fiber mask visualization
@@ -540,7 +523,7 @@ if selected_image_gray is not None:
             mime='text/csv'
         )
 
-    # TAB 4: REFERENCE & GUIDE (Side reference)
+    # TAB 4: BACKGROUND & REFERENCE GUIDE (Last tab)
     with tab_guide:
         st.subheader("Microstructure & Cross-Section Reference Guide")
         st.info(
@@ -549,12 +532,8 @@ if selected_image_gray is not None:
         )
         st.markdown(
             "**Layer Definitions in CT Scan:**\n"
-            "- **Top & Bottom Non-Part:** Smooth dark grey background (air/mounting void).\n"
+            "- **Top & Bottom Non-Part:** Smooth dark grey background (air/mounting void; 0mm if cropped to surface).\n"
             "- **Top & Bottom Skin:** Dark grainy section containing aligned fibers.\n"
             "- **Center Core:** Thin lighter section centered in the sample containing transverse fibers.\n"
             "- **Fiber Volume Fraction ($V_f$):** Directly extracted by segmenting high-density fiber lines and dots from the darker polymer matrix."
         )
-else:
-    st.info("Please upload a CT scan image or choose a demo specimen from the dropdown above to begin analysis.")
-
-st.markdown("<br><br><p style='text-align: center; font-size: 11px; color: gray;'>CT Fiber Orientation & Layer Thickness Analyzer | AA/MSE Product Design</p>", unsafe_allow_html=True)
